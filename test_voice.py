@@ -1,6 +1,6 @@
 from google.cloud import texttospeech
 
-client = texttospeech.TextToSpeechClient.from_service_account_json('tts_api/___________________________________.json')
+client = texttospeech.TextToSpeechClient.from_service_account_json('tts_api/____________________________________.json')
 synthesis_input = texttospeech.SynthesisInput(text='안녕하세요 저는 말하고 있습니다')
 voice = texttospeech.VoiceSelectionParams(
     language_code='ko-KR', ssml_gender=texttospeech.SsmlVoiceGender.MALE, name='ko-KR-Neural2-C'
