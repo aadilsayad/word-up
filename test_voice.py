@@ -5,6 +5,7 @@ synthesis_input = texttospeech.SynthesisInput(text='안녕하세요 저는 말�
 voice = texttospeech.VoiceSelectionParams(
     language_code='ko-KR', ssml_gender=texttospeech.SsmlVoiceGender.MALE, name='ko-KR-Neural2-C'
 )
+
 audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
 
 request = texttospeech.SynthesizeSpeechRequest(

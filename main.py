@@ -316,7 +316,7 @@ game_page.grid(row=0, column=0, sticky="nsew")
 game_page_title = Label(game_page, text="GAME RUNNING")
 game_page_title.grid(row=0, column=1)
 
-stats_label = Label(game_page, text="GAME")
+stats_label = Label(game_page, text="Level")
 stats_label.grid(row=2, column=1)
 
 flip_timer = window.after(5000, func=next_card)

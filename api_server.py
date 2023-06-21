@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
-model = AutoModelForSeq2SeqLM.from_pretrained('test_model').cuda()
+model = AutoModelForSeq2SeqLM.from_pretrained('test_model')
 tokenizer = AutoTokenizer.from_pretrained('test_tokenizer')
 output_language = "en"
 LANG_TOKEN_MAPPING = {
@@ -41,7 +41,7 @@ def translate():
         lang_token_map=LANG_TOKEN_MAPPING
     )
 
-    input_ids = input_ids.unsqueeze(0).cuda()
+    input_ids = input_ids.unsqueeze(0)
 
     output_tokens = model.generate(input_ids, num_beams=20, length_penalty=0.2)
     output_word = tokenizer.decode(output_tokens[0], skip_special_tokens=True)
