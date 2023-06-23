@@ -7,7 +7,7 @@ import sqlite3
 import requests
 import pygame
 
-pygame.mixer.init()
+
 connection = sqlite3.connect("vocabulary.db")
 cursor = connection.cursor()
 url = 'http://localhost:5000/translate'
@@ -27,7 +27,7 @@ current_card = ""
 
 window = Tk()
 window.title("Word Up")
-window.config(padx=20, pady=20, bg=BACKGROUND_COLOR)
+window.config(bg=BACKGROUND_COLOR)
 screen_width = window.winfo_screenwidth()
 screen_height = window.winfo_screenheight()
 side = int(min(screen_height*0.65, screen_width*0.65))
@@ -268,6 +268,15 @@ for i in range(7):
 
 
 # ----------------------------- GAME PAGE -----------------------------------------------------------------------
+def play_audio(word):
+    pygame.init()
+    pygame.mixer.init()
+    pygame.mixer.music.load(f"voices/{word}.mp3")
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        pygame.time.Clock().tick()
+    pygame.quit()
+
 def next_card():
     global current_card, flip_timer, to_learn
     window.after_cancel(flip_timer)
@@ -279,21 +288,22 @@ def next_card():
     timer.set(1)
     unknown_button.grid_forget()
     known_button.grid_forget()
-    flip_timer = window.after(5000, func=flip_card)
+    flip_timer = window.after(6000, func=flip_card)
     decrease_timer()
-
+    window.after(15, func=lambda: play_audio(current_card))
 
 def flip_card():
     canvas.itemconfig(card_title, text="English", fill="white")
-    input_data = {
-        'input_text': current_card
-    }
-    response = requests.post(url, json=input_data)
-    if response.status_code == 200:
-        translated_text = response.json()['translation']
-        canvas.itemconfig(card_word, text=translated_text, fill="white")
-    else:
-        print('Error:', response.text)
+    # input_data = {
+    #     'input_text': current_card
+    # }
+    # response = requests.post(url, json=input_data)
+    # if response.status_code == 200:
+    #     translated_text = response.json()['translation']
+    #     canvas.itemconfig(card_word, text=translated_text, fill="white")
+    # else:
+    #     print('Error:', response.text)
+    canvas.itemconfig(card_word, text="placeholder", fill="white")
     canvas.itemconfig(card_background, image=card_back_img)
     timer.grid_forget()
     unknown_button.grid(row=1, column=0)
@@ -311,12 +321,12 @@ def is_known():
 def decrease_timer():
     value = timer.get()
     if value > 0:
-        new_value = value - 1/2800
+        new_value = value - 1/2300
         timer.set(new_value)
         window.after(1, decrease_timer)
 
 
-game_page = Frame(window, bg=BACKGROUND_COLOR)
+game_page = Frame(window, bg=BACKGROUND_COLOR, padx=20, pady=20)
 game_page.grid(row=0, column=0, sticky="nsew")
 
 game_page_title = Label(game_page, text="GAME RUNNING")
