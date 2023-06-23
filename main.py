@@ -4,25 +4,30 @@ from tkinter import messagebox
 import pandas
 import random
 import sqlite3
+import requests
+import pygame
 
 
 connection = sqlite3.connect("vocabulary.db")
 cursor = connection.cursor()
+url = 'http://localhost:5000/translate'
 
-french_dictionary = []
+korean_vocab = []
 
 language_selected = ""
 save = 0
 level = 0
 new_game = False
+save_to_load = f"{language_selected}_save_{save}"
+to_learn = []
 
 BACKGROUND_COLOR = "#F4DED3"
-current_card = dict()
+current_card = ""
 
 
 window = Tk()
 window.title("Word Up")
-window.config(padx=20, pady=20, bg=BACKGROUND_COLOR)
+window.config(bg=BACKGROUND_COLOR)
 screen_width = window.winfo_screenwidth()
 screen_height = window.winfo_screenheight()
 side = int(min(screen_height*0.65, screen_width*0.65))
@@ -52,10 +57,18 @@ def load_track():
 
 
 def continue_track():
-    global save_to_load
-    show_frame(game_page)
+    global save_to_load, to_learn
     with open("data/recent_save.txt", 'r') as file_1:
         save_to_load = file_1.read()
+    cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
+    records = cursor.fetchall()
+    level_to_set = records[0][1]
+    stats_label.config(text=f"Level: {level_to_set}")
+    cursor.execute(f"select * from {save_to_load}")
+    word_list = cursor.fetchall()
+    to_learn = [tup[0] for tup in word_list]
+    show_frame(game_page)
+
     next_card()
 
 
@@ -120,6 +133,7 @@ korean_button.grid(row=3, column=0)
 # ----------------------------- SAVE SELECT PAGE ----------------------------------------------------------------
 def delete_save(save_to_delete):
     cursor.execute(f"drop table {save_to_delete}")
+    cursor.execute(f"delete from saves_list where save_name = '{save_to_load}'")
 
 
 def set_save(n):
@@ -130,20 +144,25 @@ def set_save(n):
         cursor.execute(f"select * from {save_to_load}")
     except sqlite3.OperationalError:
         with open("data/recent_save.txt", 'w') as file_1:
-            file_1.write(save_to_load)
+            file_1.write(f"{save_to_load}")
+        cursor.execute(f"insert into saves_list values('{save_to_load}', 0)")
         return True
     else:
-        if cursor.fetchall():
+        if cursor.fetchall() and new_game:
             to_delete = messagebox.askyesno(title="Oops", message=f"Save {save} is already occupied!!!"
                                                                   f"\n Do you want to delete it?")
             if to_delete:
                 delete_save(save_to_load)
+                with open("data/recent_save.txt", 'w') as file_1:
+                    file_1.write(f"{save_to_load}")
+                cursor.execute(f"insert into saves_list values('{save_to_load}', 0)")
                 return True
             else:
                 return False
         else:
             with open("data/recent_save.txt", 'w') as file_1:
-                file_1.write(save_to_load)
+                file_1.write(f"{save_to_load}")
+            cursor.execute(f"insert into saves_list values('{save_to_load}', 0)")
             return True
 
 
@@ -153,9 +172,18 @@ def load_levels_n(n):
 
 
 def load_save_n(n):
-    if set_save(n):
-        show_frame(game_page)
-        next_card()
+    global save, save_to_load, to_learn
+    save = n
+    save_to_load = f"{language_selected}_save_{save}"
+    cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
+    records = cursor.fetchall()
+    level_to_set = records[0][1]
+    stats_label.config(text=f"Level: {level_to_set}")
+    cursor.execute(f"select * from {save_to_load}")
+    word_list = cursor.fetchall()
+    to_learn = [tup[0] for tup in word_list]
+    show_frame(game_page)
+    next_card()
 
 
 saves_page = Frame(window)
@@ -186,11 +214,14 @@ save3_button.grid(row=4, column=0)
 
 # ----------------------------- LEVEL SELECT PAGE ---------------------------------------------------------------
 def load_level_n(n):
-    global level, actual_to_learn, to_learn
+    global level, to_learn
     show_frame(game_page)
     stats_label.config(text=f"Level: {n}")
-    level = level_to_word[n]
-    actual_to_learn = to_learn[0:level]
+    cursor.execute(f"update saves_list set level = {n} where save_name = '{save_to_load}'")
+    cursor.execute(f"select * from korean_full")
+    records = cursor.fetchall()
+    word_count = level_to_word[n]
+    to_learn = [tup[0] for tup in records][0:word_count]
     next_card()
 
 
@@ -237,57 +268,42 @@ for i in range(7):
 
 
 # ----------------------------- GAME PAGE -----------------------------------------------------------------------
-with open("data/french_to_english.txt", encoding="utf-8") as file:
-    lines = file.readlines()
-for line in lines:
-    word_pair = line.strip().split(",")
-    fr = word_pair[0]
-    en = word_pair[1]
-    new_dict = {'French': fr, 'English': en}
-    french_dictionary.append(new_dict)
-
-df = pandas.DataFrame(french_dictionary)
-df.to_sql(name="french_new", con=connection, schema="French nvarchar(30), English varchar(30)", if_exists="replace", index=False)
-
-save_to_load = f"{language_selected}_save_{save}"
-
-try:
-    cursor.execute(f"select * from {save_to_load}")
-except sqlite3.OperationalError:
-    cursor.execute("Select * from french_new")
-    result = cursor.fetchall()
-else:
-    result = cursor.fetchall()
-
-to_learn = []
-
-for tup in result:
-    fr_word = tup[0]
-    en_word = tup[1]
-    next_item = {'French': fr_word, 'English': en_word}
-    to_learn.append(next_item)
-
-actual_to_learn = to_learn
-
+def play_audio(word):
+    pygame.init()
+    pygame.mixer.init()
+    pygame.mixer.music.load(f"voices/{word}.mp3")
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        pygame.time.Clock().tick()
+    pygame.quit()
 
 def next_card():
-    global current_card, flip_timer
+    global current_card, flip_timer, to_learn
     window.after_cancel(flip_timer)
-    current_card = random.choice(actual_to_learn)
-    canvas.itemconfig(card_title, text="French", fill="black")
-    canvas.itemconfig(card_word, text=current_card["French"], fill="black")
+    current_card = random.choice(to_learn)
+    canvas.itemconfig(card_title, text="Korean", fill="black")
+    canvas.itemconfig(card_word, text=current_card, fill="black")
     canvas.itemconfig(card_background, image=card_front_img)
     timer.grid(row=1, column=1)
     timer.set(1)
     unknown_button.grid_forget()
     known_button.grid_forget()
-    flip_timer = window.after(5000, func=flip_card)
+    flip_timer = window.after(6000, func=flip_card)
     decrease_timer()
-
+    window.after(15, func=lambda: play_audio(current_card))
 
 def flip_card():
     canvas.itemconfig(card_title, text="English", fill="white")
-    canvas.itemconfig(card_word, text=current_card["English"], fill="white")
+    # input_data = {
+    #     'input_text': current_card
+    # }
+    # response = requests.post(url, json=input_data)
+    # if response.status_code == 200:
+    #     translated_text = response.json()['translation']
+    #     canvas.itemconfig(card_word, text=translated_text, fill="white")
+    # else:
+    #     print('Error:', response.text)
+    canvas.itemconfig(card_word, text="placeholder", fill="white")
     canvas.itemconfig(card_background, image=card_back_img)
     timer.grid_forget()
     unknown_button.grid(row=1, column=0)
@@ -295,28 +311,28 @@ def flip_card():
 
 
 def is_known():
-    actual_to_learn.remove(current_card)
-    print(len(actual_to_learn))
-    data_to_learn = pandas.DataFrame(actual_to_learn)
-    data_to_learn.to_sql(name=f"{save_to_load}", con=connection, schema="French varchar(30), English varchar(30)", if_exists="replace", index=False)
+    to_learn.remove(current_card)
+    print(len(to_learn))
+    data_to_learn = pandas.DataFrame(to_learn)
+    data_to_learn.to_sql(name=f"{save_to_load}", con=connection, schema="Korean nvarchar(30)", if_exists="replace", index=False)
     next_card()
 
 
 def decrease_timer():
     value = timer.get()
     if value > 0:
-        new_value = value - 1/2800
+        new_value = value - 1/2300
         timer.set(new_value)
         window.after(1, decrease_timer)
 
 
-game_page = Frame(window, bg=BACKGROUND_COLOR)
+game_page = Frame(window, bg=BACKGROUND_COLOR, padx=20, pady=20)
 game_page.grid(row=0, column=0, sticky="nsew")
 
 game_page_title = Label(game_page, text="GAME RUNNING")
 game_page_title.grid(row=0, column=1)
 
-stats_label = Label(game_page, text="Level")
+stats_label = Label(game_page, text="GAME")
 stats_label.grid(row=2, column=1)
 
 flip_timer = window.after(5000, func=next_card)
