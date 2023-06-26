@@ -10,27 +10,23 @@ import pygame
 
 connection = sqlite3.connect("vocabulary.db")
 cursor = connection.cursor()
-url = 'http://localhost:5000/translate'
-
-korean_vocab = []
+url = 'http://ip_address:5000/translate'
 
 language_selected = ""
 save = 0
 level = 0
 new_game = False
-save_to_load = f"{language_selected}_save_{save}"
+save_to_load = ""
 to_learn = []
-
-BACKGROUND_COLOR = "#F4DED3"
 current_card = ""
-
+BACKGROUND_COLOR = "#FCE3B6"
 
 window = Tk()
 window.title("Word Up")
 window.config(bg=BACKGROUND_COLOR)
 screen_width = window.winfo_screenwidth()
 screen_height = window.winfo_screenheight()
-side = int(min(screen_height*0.65, screen_width*0.65))
+side = int(min(screen_height*0.7, screen_width*0.7))
 window.minsize(width=side, height=side)
 window.resizable(False, False)
 window.grid_rowconfigure(0, weight=1)
@@ -40,8 +36,6 @@ window.grid_columnconfigure(0, weight=1)
 # ----------------------------- MAIN MENU -------------------------------------------------------------------
 def show_frame(page):
     page.tkraise()
-    if page == game_page:
-        print("Currently on game page")
 
 
 def new_track():
@@ -57,19 +51,24 @@ def load_track():
 
 
 def continue_track():
-    global save_to_load, to_learn
+    global save_to_load, to_learn, level
     with open("data/recent_save.txt", 'r') as file_1:
         save_to_load = file_1.read()
-    cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
-    records = cursor.fetchall()
-    level_to_set = records[0][1]
-    stats_label.config(text=f"Level: {level_to_set}")
-    cursor.execute(f"select * from {save_to_load}")
-    word_list = cursor.fetchall()
-    to_learn = [tup[0] for tup in word_list]
-    show_frame(game_page)
-
-    next_card()
+    try:
+        cursor.execute(f"select * from {save_to_load}")
+    except sqlite3.OperationalError:
+        show_frame(level_complete)
+    else:
+        word_list = cursor.fetchall()
+        to_learn = [tup[0] for tup in word_list]
+        cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
+        records = cursor.fetchall()
+        level = records[0][1]
+        total_word_count = level_to_word[level]
+        words_learnt = total_word_count - len(to_learn)
+        stats_label.config(text=f"Level: {level}\nWords learnt: {words_learnt}/{total_word_count}")
+        show_frame(game_page)
+        next_card()
 
 
 main_menu = Frame(window)
@@ -87,7 +86,9 @@ title_label.grid(row=0, column=0)
 
 continue_img = PhotoImage(file='images/continue_button.png')
 continue_button = Button(main_menu, image=continue_img, command=continue_track, borderwidth=0)
-continue_button.grid(row=1, column=0)
+with open("data/recent_save.txt") as file:
+    if file.readline() != "empty":
+        continue_button.grid(row=1, column=0)
 
 new_img = PhotoImage(file='images/new_button.png')
 new_button = Button(main_menu, image=new_img, command=new_track, borderwidth=0)
@@ -118,22 +119,22 @@ language_page.grid_columnconfigure(0, weight=1)
 select_lang_label = Label(language_page, text="Select language:")
 select_lang_label.grid(row=0, column=0)
 
-fr_button_img = PhotoImage(file="images/french_button.png")
-french_button = Button(language_page, image=fr_button_img, command=lambda: load_pages("French"), borderwidth=0)
-sp_button_img = PhotoImage(file="images/spanish_button.png")
-spanish_button = Button(language_page, image=sp_button_img, command=lambda: load_pages("Spanish"), borderwidth=0)
+# fr_button_img = PhotoImage(file="images/french_button.png")
+# french_button = Button(language_page, image=fr_button_img, command=lambda: load_pages("French"), borderwidth=0)
+# sp_button_img = PhotoImage(file="images/spanish_button.png")
+# spanish_button = Button(language_page, image=sp_button_img, command=lambda: load_pages("Spanish"), borderwidth=0)
 ko_button_img = PhotoImage(file="images/korean_button.png")
 korean_button = Button(language_page, image=ko_button_img, command=lambda: load_pages("Korean"), borderwidth=0)
 
-french_button.grid(row=1, column=0)
-spanish_button.grid(row=2, column=0)
-korean_button.grid(row=3, column=0)
+# french_button.grid(row=1, column=0)
+# spanish_button.grid(row=2, column=0)
+korean_button.grid(row=1, column=0)
 
 
 # ----------------------------- SAVE SELECT PAGE ----------------------------------------------------------------
 def delete_save(save_to_delete):
     cursor.execute(f"drop table {save_to_delete}")
-    cursor.execute(f"delete from saves_list where save_name = '{save_to_load}'")
+    cursor.execute(f"delete from saves_list where save_name = '{save_to_delete}'")
 
 
 def set_save(n):
@@ -172,18 +173,30 @@ def load_levels_n(n):
 
 
 def load_save_n(n):
-    global save, save_to_load, to_learn
+    global save, save_to_load, to_learn, level
     save = n
     save_to_load = f"{language_selected}_save_{save}"
-    cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
-    records = cursor.fetchall()
-    level_to_set = records[0][1]
-    stats_label.config(text=f"Level: {level_to_set}")
-    cursor.execute(f"select * from {save_to_load}")
-    word_list = cursor.fetchall()
-    to_learn = [tup[0] for tup in word_list]
-    show_frame(game_page)
-    next_card()
+    try:
+        cursor.execute(f"select * from {save_to_load}")
+    except sqlite3.OperationalError:
+        cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
+        if cursor.fetchall():
+            show_frame(level_complete)
+        else:
+            messagebox.showinfo(title="Empty Save", message=f"Save {n} is empty.\nChoose another save file.")
+    else:
+        with open("data/recent_save.txt", 'w') as file_1:
+            file_1.write(f"{save_to_load}")
+        word_list = cursor.fetchall()
+        to_learn = [tup[0] for tup in word_list]
+        cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
+        records = cursor.fetchall()
+        level = records[0][1]
+        total_word_count = level_to_word[level]
+        words_learnt = total_word_count - len(to_learn)
+        stats_label.config(text=f"Level: {level}\nWords learnt: {words_learnt}/{total_word_count}")
+        show_frame(game_page)
+        next_card()
 
 
 saves_page = Frame(window)
@@ -196,7 +209,7 @@ saves_page.grid_rowconfigure(3, weight=1)
 saves_page.grid_rowconfigure(4, weight=1)
 saves_page.grid_columnconfigure(0, weight=1)
 
-saves_page_title = Label(saves_page, text="", bg="green", fg="white", font=("", 36))
+saves_page_title = Label(saves_page, text="", font=("", 36))
 saves_page_title.grid(row=0, column=0, pady=20)
 
 select_save_label = Label(saves_page, text="")
@@ -215,13 +228,15 @@ save3_button.grid(row=4, column=0)
 # ----------------------------- LEVEL SELECT PAGE ---------------------------------------------------------------
 def load_level_n(n):
     global level, to_learn
-    show_frame(game_page)
-    stats_label.config(text=f"Level: {n}")
+    level = n
     cursor.execute(f"update saves_list set level = {n} where save_name = '{save_to_load}'")
     cursor.execute(f"select * from korean_full")
     records = cursor.fetchall()
     word_count = level_to_word[n]
     to_learn = [tup[0] for tup in records][0:word_count]
+    show_frame(game_page)
+    word_count = level_to_word[level]
+    stats_label.config(text=f"Level: {level}\nWords learnt: 0/{word_count}")
     next_card()
 
 
@@ -233,7 +248,7 @@ levels_page.grid_rowconfigure(1, weight=1)
 levels_page.grid_rowconfigure(2, weight=1)
 levels_page.grid_columnconfigure(0, weight=1)
 
-levels_page_title = Label(levels_page, text="", bg="green", fg="white", font=("", 36))
+levels_page_title = Label(levels_page, text="", font=("", 36))
 levels_page_title.grid(row=0, column=0, pady=20)
 
 level_select_label = Label(levels_page, text="Select a level to start learning:")
@@ -258,7 +273,7 @@ for i in range(7):
     button_i = Button(
         levels_container,
         text=f"{i + 1}\n{level_to_word[i+1]} words",
-        width=8, height=2, borderwidth=0,
+        width=8, height=2,
         command=lambda j=i: load_level_n(j+1)
     )
     button_i.grid(row=row_n, column=column_n, padx=10, pady=10)
@@ -266,8 +281,69 @@ for i in range(7):
     if column_n == 0:
         row_n += 1
 
+# ----------------------------- LEVEL COMPLETE PAGE -------------------------------------------------------------
+def home():
+    show_frame(main_menu)
+
+
+def next_level():
+    global level, save_to_load, to_learn
+    cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
+    records = cursor.fetchall()
+    current_level = records[0][1]
+    level = current_level + 1
+    if level == 8:
+        level = 1
+        # Language Complete!
+    cursor.execute(f"update saves_list set level = {level} where save_name = '{save_to_load}'")
+    total_word_count = level_to_word[level]
+    cursor.execute(f"select * from korean_full")
+    records = cursor.fetchall()
+    to_learn = [tup[0] for tup in records][0:total_word_count]
+    stats_label.config(text=f"Level: {level}\nWords learnt: 0/{total_word_count}")
+    show_frame(game_page)
+    next_card()
+
+
+def replay():
+    global to_learn, level
+    cursor.execute(f"select * from saves_list where save_name = '{save_to_load}'")
+    records = cursor.fetchall()
+    level = records[0][1]
+    total_word_count = level_to_word[level]
+    cursor.execute(f"select * from korean_full")
+    records = cursor.fetchall()
+    to_learn = [tup[0] for tup in records][0:total_word_count]
+    data_to_learn = pandas.DataFrame(to_learn)
+    try:
+        data_to_learn.to_sql(name=f"{save_to_load}", con=connection, schema="Korean nvarchar(30)", if_exists="replace", index=False)
+    except sqlite3.OperationalError:
+        show_frame(level_complete)
+    else:
+        stats_label.config(text=f"Level: {level}\nWords learnt: 0/{total_word_count}")
+        show_frame(game_page)
+        next_card()
+
+
+level_complete = Frame(window)
+level_complete.grid(row=0, column=0, sticky="nsew")
+
+congrats_label = Label(level_complete, text="Congrats! You completed the level")
+congrats_label.grid(row=0, column=1)
+
+go_home = Button(level_complete, text="Home", command=home)
+go_home.grid(row=1, column=0)
+
+replay_level = Button(level_complete, text="Replay Level", command=replay)
+replay_level.grid(row=1, column=1)
+
+next_level_button = Button(level_complete, text="Next Level", command=next_level)
+next_level_button.grid(row=1, column=2)
 
 # ----------------------------- GAME PAGE -----------------------------------------------------------------------
+def quit_game():
+    show_frame(main_menu)
+
 def play_audio(word):
     pygame.init()
     pygame.mixer.init()
@@ -306,16 +382,24 @@ def flip_card():
     canvas.itemconfig(card_word, text="placeholder", fill="white")
     canvas.itemconfig(card_background, image=card_back_img)
     timer.grid_forget()
-    unknown_button.grid(row=1, column=0)
-    known_button.grid(row=1, column=2)
+    hidden_label_2.grid(row=0, column=1, padx=80)
+    unknown_button.grid(row=0, column=0)
+    known_button.grid(row=0, column=2)
 
 
 def is_known():
     to_learn.remove(current_card)
     print(len(to_learn))
+    total_word_count = level_to_word[level]
+    words_learnt = total_word_count - len(to_learn)
+    stats_label.config(text=f"Level: {level}\nWords learnt: {words_learnt}/{total_word_count}")
     data_to_learn = pandas.DataFrame(to_learn)
-    data_to_learn.to_sql(name=f"{save_to_load}", con=connection, schema="Korean nvarchar(30)", if_exists="replace", index=False)
-    next_card()
+    try:
+        data_to_learn.to_sql(name=f"{save_to_load}", con=connection, schema="Korean nvarchar(30)", if_exists="replace", index=False)
+    except sqlite3.OperationalError:
+        show_frame(level_complete)
+    else:
+        next_card()
 
 
 def decrease_timer():
@@ -329,33 +413,47 @@ def decrease_timer():
 game_page = Frame(window, bg=BACKGROUND_COLOR, padx=20, pady=20)
 game_page.grid(row=0, column=0, sticky="nsew")
 
-game_page_title = Label(game_page, text="GAME RUNNING")
-game_page_title.grid(row=0, column=1)
+stats_frame = Frame(game_page, bg=BACKGROUND_COLOR)
+stats_frame.grid(row=0, column=0)
 
-stats_label = Label(game_page, text="GAME")
-stats_label.grid(row=2, column=1)
+card_frame = Frame(game_page)
+card_frame.grid(row=1, column=0)
+
+buttons_frame = Frame(game_page, bg=BACKGROUND_COLOR)
+buttons_frame.grid(row=2, column=0)
 
 flip_timer = window.after(5000, func=next_card)
 
-canvas = Canvas(game_page, width=500, height=329)
-card_front_img = PhotoImage(file="images/card_1_front.png")
-card_back_img = PhotoImage(file="images/card_1_back.png")
+canvas = Canvas(card_frame, width=500, height=329)
+card_front_img = PhotoImage(file="images/card_2_front.png")
+card_back_img = PhotoImage(file="images/card_2_back.png")
 card_background = canvas.create_image(250, 164, image=card_front_img)
 card_title = canvas.create_text(250, 110, text="", font=("Ariel", 30, "italic"))
 card_word = canvas.create_text(250, 190, text="", font=("Ariel", 50, "bold"))
 canvas.config(bg=BACKGROUND_COLOR, highlightthickness=0)
-canvas.grid(row=0, column=0, columnspan=3)
+canvas.grid(row=0, column=0)
 
-cross_image = PhotoImage(file="images/wrong.png")
-unknown_button = Button(game_page, image=cross_image, highlightthickness=0, command=next_card)
-unknown_button.grid(row=1, column=0)
+home_img = PhotoImage(file="images/home_2.png")
+quit_button = Button(stats_frame, image=home_img, command=quit_game, borderwidth=0.5)
+quit_button.grid(row=0, column=2)
 
-check_image = PhotoImage(file="images/right.png")
-known_button = Button(game_page, image=check_image, highlightthickness=0, command=is_known)
-known_button.grid(row=1, column=2)
+cross_image = PhotoImage(file="images/wrong_button_2.png")
+unknown_button = Button(buttons_frame, image=cross_image, highlightthickness=0, command=next_card, borderwidth=0)
+unknown_button.grid(row=2, column=0)
 
-timer = ctk.CTkProgressBar(game_page, corner_radius=50, orientation="horizontal", fg_color="white", progress_color="green")
-timer.grid(row=1, column=1)
+check_image = PhotoImage(file="images/right_button_2.png")
+known_button = Button(buttons_frame, image=check_image, highlightthickness=0, command=is_known, borderwidth=0)
+known_button.grid(row=2, column=2)
+
+timer = ctk.CTkProgressBar(buttons_frame, corner_radius=50, orientation="horizontal", fg_color="white", progress_color="green")
+timer.grid(row=2, column=1)
+
+stats_label = Label(stats_frame, text="", bg=BACKGROUND_COLOR, font=("", 10))
+stats_label.grid(row=0, column=0)
+
+hidden_label_1 = Label(stats_frame, text="", bg=BACKGROUND_COLOR)
+hidden_label_1.grid(row=0, column=1, padx=150, pady=20)
+hidden_label_2 = Label(buttons_frame, text="", bg=BACKGROUND_COLOR)
 
 show_frame(main_menu)
 window.mainloop()
